@@ -1,0 +1,2 @@
+# Ignore the database files - that store the keywords
+db/*
