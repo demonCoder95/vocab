@@ -2,10 +2,16 @@
 # operations and abstracts the internals of the database
 # from the main applications that needs to perform CRUD operations.
 import sqlite3
+import os
 
 class SqliteHandler():
     # A static variable to store the database file path
-    sqlite_db_path = "../db/vocab.db"
+
+    # Note: DO NOT USE RELATIVE PATHS, THEY BREAK THE FUNCTIONALITY
+    sqlite_db_path = "db/vocab.db"
+    
+    # determine the dir path by excluding the file name
+    sqlite_db_path_dir = "/".join(sqlite_db_path.split("/")[:-1])
     sqlite_db_name = sqlite_db_path.split("/")[-1]
 
     # A DB schema to store the k/v pairs
@@ -22,12 +28,25 @@ class SqliteHandler():
         This constructor needs to initialize the database handler by
         opening the file as stored in the static variable. It will also
         start a cursor on the database to allow for queries execution.
-        """
-        try:
+        """       
+        # Check if the daatabase path exists
+        if os.path.exists(SqliteHandler.sqlite_db_path_dir):
+            print("[DEBUG] DB path '{}' exists.".format(
+                SqliteHandler.sqlite_db_path_dir
+            ))
+        else:
+            print("[DEBUG] DB path '{}' does not exist. Creating...".format(
+                SqliteHandler.sqlite_db_path
+            ))
+            os.system("mkdir -p {}".format(SqliteHandler.sqlite_db_path_dir))
+        
+        try: 
             self.connection = sqlite3.connect(SqliteHandler.sqlite_db_path)
         except Exception as e:
             print("[DEBUG] Exception occured when connecting to the database.")
-            print("Dying\n{}", e)
+            print("[DEBUG] Dying because '{}'.".format(e))
+            # If an exception occured, initialize the connection object anyway
+            self.connection = None
             exit(1)
 
         self.cursor = self.connection.cursor()
@@ -56,7 +75,8 @@ class SqliteHandler():
     # A destructor to clean up database connections, if any are open
     def __del__(self):
         # close the connection
-        self.connection.close()
+        if self.connection is not None:    
+            self.connection.close()
 
     # A method to retrieve an entry from the database, all matching entries as well
     def get_from_db(self, keyword):
@@ -86,17 +106,26 @@ class SqliteHandler():
                 response[0][1] + "\n" + desc,
                 phrase
             )
-            self.cursor.execute(update_query)
-            self.connection.commit()
+            try:
+                self.cursor.execute(update_query)
+                self.connection.commit()
+            except Exception as e:
+                print("[DEBUG] Failed to update the phrase in the database.")
+                print("[DEBUG] Reason: {}".format(e))
+                return False
         else:
             # If the phrase doesn't exist, simply add it
             self.put_in_db(phrase, desc)
+
+        return True
 
     # A method to write a phrase and description to the database
     def put_in_db(self, phrase, desc):
         """This method will return success/failure status of a query that
         has successfully or unsuccessfully been executed on the database
-        for storing data."""
+        for storing data.
+        return: True if successful, False otherwise.
+        """
 
         # TODO: Perform sanitization of the data before stuffing it in the
         # query here
@@ -107,8 +136,16 @@ class SqliteHandler():
             phrase,
             desc
         )
-        # execute the query to add the data in the database table
-        self.cursor.execute(put_query)
+        try:
+            # execute the query to add the data in the database table
+            self.cursor.execute(put_query)
 
-        # commit changes to the database on disk
-        self.connection.commit()
+            # commit changes to the database on disk
+            self.connection.commit()
+        except Exception as e:
+            print("[DEBUG] Error occured writing to the database.")
+            print("[DEBUG] Reason: {}".format(e))
+            # Return a False, for successful operation
+            return False
+
+        return True
